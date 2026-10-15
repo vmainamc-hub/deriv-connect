@@ -24,3 +24,4 @@
 .dk-bt{display:flex;flex-direction:column;gap:2px;font-size:13px;overflow-x:auto}.dk-bt-head,.dk-bt-row{display:grid;grid-template-columns:minmax(260px,2.6fr) .7fr .7fr .7fr .6fr .7fr 1.3fr;gap:10px;align-items:center;padding:10px 6px;min-width:760px}.dk-bt-head{font:500 10px 'DM Mono';letter-spacing:1px;color:var(--muted)}.dk-bt-row{border-top:1px solid var(--line)}.dk-bt-row small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
 .dk-verdict{font:600 10px 'DM Mono';letter-spacing:1px;color:var(--muted)}.dk-verdict.edge_found{color:var(--teal)}.dk-verdict.worse_than_odds{color:var(--red)}.dk-verdict.no_edge{color:var(--amber)}
 @media(max-width:900px){.dk-hero{grid-template-columns:1fr}.dk-trades{grid-template-columns:repeat(5,1fr)}}
+body{color:var(--text);background-color:var(--bg)}
