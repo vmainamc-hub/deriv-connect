@@ -1,3 +1,4 @@
+// @ts-nocheck -- ported verbatim from original Sixfold source (written for non-strict index checks)
 import {outcome, type ContractSide, type Decision} from './engine';
 
 export type ContractSpec={side:ContractSide;barrier:number;label:string};

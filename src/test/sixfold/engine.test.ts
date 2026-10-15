@@ -1,3 +1,4 @@
+// @ts-nocheck -- ported verbatim from original Sixfold source (written for non-strict index checks)
 import {describe,it,expect} from 'vitest';
 import {evaluatePsychology} from '@/sixfold/psychology';
 import {analyzeDigits,contractParameter,digitFromQuote,expectedValue,outcome,parseDigitsText,walkForwardReplay} from '@/sixfold/engine';

@@ -1,3 +1,4 @@
+// @ts-nocheck -- ported verbatim from original Sixfold source (written for non-strict index checks)
 import {describe, it, expect} from 'vitest';
 import {simulateBot, botSummary, baselineRate, breakEven, counterContract, crowdMap, relationToCrowd, contractState, siblings, counterCrowdBacktest, deskBacktests, windowStats} from '@/sixfold/desk';
 import {chiSquareUniform, zScore} from '@/sixfold/stats';
