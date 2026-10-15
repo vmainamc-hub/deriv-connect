@@ -21,15 +21,23 @@ export function SixfoldApp(){
  // TRADE_CANDIDATE branch below valid for when a validated conditional strategy exists.
  const finalDisposition = (report.decision==='BLOCK'?'BLOCK':'WAIT') as 'WAIT'|'BLOCK'|'TRADE_CANDIDATE';
  const psychology=useMemo(()=>({OVER:evaluatePsychology(digits.slice(-windowSize),'OVER',barrier),UNDER:evaluatePsychology(digits.slice(-windowSize),'UNDER',barrier),EVEN:evaluatePsychology(digits.slice(-windowSize),'EVEN',barrier),ODD:evaluatePsychology(digits.slice(-windowSize),'ODD',barrier),MATCHES:evaluatePsychology(digits.slice(-windowSize),'MATCHES',selectedDigit),DIFFERS:evaluatePsychology(digits.slice(-windowSize),'DIFFERS',selectedDigit)}),[digits,windowSize,barrier,selectedDigit]);
- const WS_HOSTS=['wss://ws.derivws.com/websockets/v3?app_id=1089','wss://ws.binaryws.com/websockets/v3?app_id=1089'];
+ // Deriv's new public market-data endpoint (no auth/app_id) first; legacy v3 addresses kept as fallbacks.
+ const WS_HOSTS=['wss://api.derivws.com/trading/v1/options/ws/public','wss://ws.derivws.com/websockets/v3?app_id=1089'];
+ // Deriv reports pip either as decimals (2) or as a fraction (0.01); normalise to decimal places.
+ const toDecimals=(v:any):number|null=>{const n=Number(v);if(!Number.isFinite(n)||n<=0)return null;return n<1?Math.round(-Math.log10(n)):Math.round(n)};
  const retry=useRef<{host:number;attempts:number;timer:ReturnType<typeof setTimeout>|null}>({host:0,attempts:0,timer:null});
  const stop=()=>{if(retry.current.timer){clearTimeout(retry.current.timer);retry.current.timer=null}retry.current.attempts=0;if(ws.current){try{ws.current.onclose=null;ws.current.onmessage=null;ws.current.onerror=null;ws.current.close()}catch{}ws.current=null}setStatus('offline')};
  const connect=(m:string=market)=>{stop();setTicks([]);setError('');setStatus('connecting');setFeedMode('live');
   const open=(hostIdx:number)=>{
-   const socket=new WebSocket(WS_HOSTS[hostIdx]);ws.current=socket;
-   socket.onopen=()=>{retry.current.host=hostIdx;retry.current.attempts=0;setStatus('live');socket.send(JSON.stringify({active_symbols:'brief',product_type:'basic',req_id:req.current++}));};
-   socket.onmessage=(ev)=>{try{const msg=JSON.parse(ev.data);if(msg.error){setError(msg.error.message||'Market-data error');setStatus('error');return;}
-    if(msg.msg_type==='active_symbols'&&Array.isArray(msg.active_symbols)){const found=msg.active_symbols.find((x:any)=>(x.symbol??x.underlying_symbol)===m);const dec=Number(found?.pip_size??found?.pip??pip.current);if(Number.isFinite(dec))pip.current=dec;socket.send(JSON.stringify({ticks_history:m,count:1000,end:'latest',style:'ticks',req_id:req.current++}));socket.send(JSON.stringify({ticks:m,subscribe:1,req_id:req.current++}));}
+   const socket=new WebSocket(WS_HOSTS[hostIdx]);ws.current=socket;let streaming=false;
+   const startStreams=()=>{if(streaming)return;streaming=true;socket.send(JSON.stringify({ticks_history:m,count:1000,end:'latest',style:'ticks',req_id:req.current++}));socket.send(JSON.stringify({ticks:m,subscribe:1,req_id:req.current++}));};
+   const openTimer=setTimeout(()=>{if(socket.readyState!==WebSocket.OPEN&&ws.current===socket){socket.onclose=null;socket.onerror=null;try{socket.close()}catch{};fail()}},8000);
+   socket.onopen=()=>{clearTimeout(openTimer);retry.current.host=hostIdx;retry.current.attempts=0;setStatus('live');socket.send(JSON.stringify({active_symbols:'brief',req_id:req.current++}));setTimeout(startStreams,3000);};
+   socket.onmessage=(ev)=>{try{const msg=JSON.parse(ev.data);
+    if(msg.error){if(msg.msg_type==='active_symbols'){startStreams();return;}setError(msg.error.message||'Market-data error');setStatus('error');return;}
+    if(msg.msg_type==='active_symbols'&&Array.isArray(msg.active_symbols)){const found=msg.active_symbols.find((x:any)=>(x.symbol??x.underlying_symbol)===m);const dec=toDecimals(found?.pip_size??found?.pip);if(dec!==null)pip.current=dec;startStreams();}
+    if(msg.tick?.pip_size!=null){const dec=toDecimals(msg.tick.pip_size);if(dec!==null)pip.current=dec;}
+    if(msg.pip_size!=null){const dec=toDecimals(msg.pip_size);if(dec!==null)pip.current=dec;}
     if(msg.msg_type==='history'&&msg.history?.prices){const ps:number[]=msg.history.prices,ts:number[]=msg.history.times;const batch=ps.map((q,i)=>tickFromQuote(Number(q),Number(ts[i]??Date.now()/1000),pip.current));setTicks(batch.slice(-1000));}
     if(msg.msg_type==='tick'&&msg.tick){const q=Number(msg.tick.quote),ep=Number(msg.tick.epoch);const t=tickFromQuote(q,ep,pip.current);setTicks(old=>[...old,t].slice(-1000));}
    }catch{setError('Could not parse the incoming market-data message.')}};
