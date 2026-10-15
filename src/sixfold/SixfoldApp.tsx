@@ -21,17 +21,26 @@ export function SixfoldApp(){
  // TRADE_CANDIDATE branch below valid for when a validated conditional strategy exists.
  const finalDisposition = (report.decision==='BLOCK'?'BLOCK':'WAIT') as 'WAIT'|'BLOCK'|'TRADE_CANDIDATE';
  const psychology=useMemo(()=>({OVER:evaluatePsychology(digits.slice(-windowSize),'OVER',barrier),UNDER:evaluatePsychology(digits.slice(-windowSize),'UNDER',barrier),EVEN:evaluatePsychology(digits.slice(-windowSize),'EVEN',barrier),ODD:evaluatePsychology(digits.slice(-windowSize),'ODD',barrier),MATCHES:evaluatePsychology(digits.slice(-windowSize),'MATCHES',selectedDigit),DIFFERS:evaluatePsychology(digits.slice(-windowSize),'DIFFERS',selectedDigit)}),[digits,windowSize,barrier,selectedDigit]);
- const stop=()=>{if(ws.current){try{ws.current.onclose=null;ws.current.onmessage=null;ws.current.close()}catch{}ws.current=null}setStatus('offline')};
+ const WS_HOSTS=['wss://ws.derivws.com/websockets/v3?app_id=1089','wss://ws.binaryws.com/websockets/v3?app_id=1089'];
+ const retry=useRef<{host:number;attempts:number;timer:ReturnType<typeof setTimeout>|null}>({host:0,attempts:0,timer:null});
+ const stop=()=>{if(retry.current.timer){clearTimeout(retry.current.timer);retry.current.timer=null}retry.current.attempts=0;if(ws.current){try{ws.current.onclose=null;ws.current.onmessage=null;ws.current.onerror=null;ws.current.close()}catch{}ws.current=null}setStatus('offline')};
  const connect=(m:string=market)=>{stop();setTicks([]);setError('');setStatus('connecting');setFeedMode('live');
-  try{const socket=new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=1089');ws.current=socket;
-   socket.onopen=()=>{setStatus('live');socket.send(JSON.stringify({active_symbols:'brief',product_type:'basic',req_id:req.current++}));};
+  const open=(hostIdx:number)=>{
+   const socket=new WebSocket(WS_HOSTS[hostIdx]);ws.current=socket;
+   socket.onopen=()=>{retry.current.host=hostIdx;retry.current.attempts=0;setStatus('live');socket.send(JSON.stringify({active_symbols:'brief',product_type:'basic',req_id:req.current++}));};
    socket.onmessage=(ev)=>{try{const msg=JSON.parse(ev.data);if(msg.error){setError(msg.error.message||'Market-data error');setStatus('error');return;}
     if(msg.msg_type==='active_symbols'&&Array.isArray(msg.active_symbols)){const found=msg.active_symbols.find((x:any)=>(x.symbol??x.underlying_symbol)===m);const dec=Number(found?.pip_size??found?.pip??pip.current);if(Number.isFinite(dec))pip.current=dec;socket.send(JSON.stringify({ticks_history:m,count:1000,end:'latest',style:'ticks',req_id:req.current++}));socket.send(JSON.stringify({ticks:m,subscribe:1,req_id:req.current++}));}
     if(msg.msg_type==='history'&&msg.history?.prices){const ps:number[]=msg.history.prices,ts:number[]=msg.history.times;const batch=ps.map((q,i)=>tickFromQuote(Number(q),Number(ts[i]??Date.now()/1000),pip.current));setTicks(batch.slice(-1000));}
     if(msg.msg_type==='tick'&&msg.tick){const q=Number(msg.tick.quote),ep=Number(msg.tick.epoch);const t=tickFromQuote(q,ep,pip.current);setTicks(old=>[...old,t].slice(-1000));}
    }catch{setError('Could not parse the incoming market-data message.')}};
-   socket.onerror=()=>{setStatus('error');setError('WebSocket connection failed. Check your connection and retry.')};socket.onclose=()=>{if(status!=='error')setStatus('offline')};
-  }catch(e){setStatus('error');setError(String(e))}
+   const fail=()=>{if(ws.current!==socket)return;const next=hostIdx+1;
+    if(next<WS_HOSTS.length){open(next);return;}
+    retry.current.attempts+=1;
+    if(retry.current.attempts<=3){setStatus('connecting');retry.current.timer=setTimeout(()=>open(0),2000*retry.current.attempts);return;}
+    setStatus('error');setError('WebSocket connection failed. Check your connection and retry.')};
+   socket.onerror=fail;socket.onclose=()=>{if(ws.current===socket&&status!=='error')fail()};
+  };
+  try{open(retry.current.host)}catch(e){setStatus('error');setError(String(e))}
  };
  useEffect(()=>{connect();return()=>{if(ws.current){ws.current.onclose=null;ws.current.close()}}},[]);
  const demo=()=>{stop();setFeedMode('demo');setError('');setStatus('offline');const seed=Date.now()%997;let s=seed;const arr=Array.from({length:1000},(_,i)=>{s=(s*9301+49297)%233280;const d=Math.floor(s/233280*10);return {quote:d,epoch:Math.floor(Date.now()/1000)-1000+i,digit:d}});setTicks(arr);};
