@@ -41,7 +41,8 @@ export function SixfoldApp(){
     if(msg.msg_type==='history'&&msg.history?.prices){const ps:number[]=msg.history.prices,ts:number[]=msg.history.times;const batch=ps.map((q,i)=>tickFromQuote(Number(q),Number(ts[i]??Date.now()/1000),pip.current));setTicks(batch.slice(-1000));}
     if(msg.msg_type==='tick'&&msg.tick){const q=Number(msg.tick.quote),ep=Number(msg.tick.epoch);const t=tickFromQuote(q,ep,pip.current);setTicks(old=>[...old,t].slice(-1000));}
    }catch{setError('Could not parse the incoming market-data message.')}};
-   const fail=()=>{if(ws.current!==socket)return;const next=hostIdx+1;
+   let failed=false;
+   const fail=()=>{clearTimeout(openTimer);if(failed||ws.current!==socket)return;failed=true;const next=hostIdx+1;
     if(next<WS_HOSTS.length){open(next);return;}
     retry.current.attempts+=1;
     if(retry.current.attempts<=3){setStatus('connecting');retry.current.timer=setTimeout(()=>open(0),2000*retry.current.attempts);return;}
