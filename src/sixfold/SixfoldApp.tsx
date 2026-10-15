@@ -33,8 +33,14 @@ export function SixfoldApp(){
     if(msg.msg_type==='history'&&msg.history?.prices){const ps:number[]=msg.history.prices,ts:number[]=msg.history.times;const batch=ps.map((q,i)=>tickFromQuote(Number(q),Number(ts[i]??Date.now()/1000),pip.current));setTicks(batch.slice(-1000));}
     if(msg.msg_type==='tick'&&msg.tick){const q=Number(msg.tick.quote),ep=Number(msg.tick.epoch);const t=tickFromQuote(q,ep,pip.current);setTicks(old=>[...old,t].slice(-1000));}
    }catch{setError('Could not parse the incoming market-data message.')}};
-   socket.onerror=()=>{setStatus('error');setError('WebSocket connection failed. Check your connection and retry.')};socket.onclose=()=>{if(status!=='error')setStatus('offline')};
-  }catch(e){setStatus('error');setError(String(e))}
+   const fail=()=>{if(ws.current!==socket)return;const next=hostIdx+1;
+    if(next<WS_HOSTS.length){open(next);return;}
+    retry.current.attempts+=1;
+    if(retry.current.attempts<=3){setStatus('connecting');retry.current.timer=setTimeout(()=>open(0),2000*retry.current.attempts);return;}
+    setStatus('error');setError('WebSocket connection failed. Check your connection and retry.')};
+   socket.onerror=fail;socket.onclose=()=>{if(ws.current===socket&&status!=='error')fail()};
+  };
+  try{open(retry.current.host)}catch(e){setStatus('error');setError(String(e))}
  };
  useEffect(()=>{connect();return()=>{if(ws.current){ws.current.onclose=null;ws.current.close()}}},[]);
  const demo=()=>{stop();setFeedMode('demo');setError('');setStatus('offline');const seed=Date.now()%997;let s=seed;const arr=Array.from({length:1000},(_,i)=>{s=(s*9301+49297)%233280;const d=Math.floor(s/233280*10);return {quote:d,epoch:Math.floor(Date.now()/1000)-1000+i,digit:d}});setTicks(arr);};
