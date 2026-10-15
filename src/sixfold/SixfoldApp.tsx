@@ -21,9 +21,12 @@ export function SixfoldApp(){
  // TRADE_CANDIDATE branch below valid for when a validated conditional strategy exists.
  const finalDisposition = (report.decision==='BLOCK'?'BLOCK':'WAIT') as 'WAIT'|'BLOCK'|'TRADE_CANDIDATE';
  const psychology=useMemo(()=>({OVER:evaluatePsychology(digits.slice(-windowSize),'OVER',barrier),UNDER:evaluatePsychology(digits.slice(-windowSize),'UNDER',barrier),EVEN:evaluatePsychology(digits.slice(-windowSize),'EVEN',barrier),ODD:evaluatePsychology(digits.slice(-windowSize),'ODD',barrier),MATCHES:evaluatePsychology(digits.slice(-windowSize),'MATCHES',selectedDigit),DIFFERS:evaluatePsychology(digits.slice(-windowSize),'DIFFERS',selectedDigit)}),[digits,windowSize,barrier,selectedDigit]);
- const stop=()=>{if(ws.current){try{ws.current.onclose=null;ws.current.onmessage=null;ws.current.close()}catch{}ws.current=null}setStatus('offline')};
+ const WS_HOSTS=['wss://ws.derivws.com/websockets/v3?app_id=1089','wss://ws.binaryws.com/websockets/v3?app_id=1089'];
+ const retry=useRef<{host:number;attempts:number;timer:ReturnType<typeof setTimeout>|null}>({host:0,attempts:0,timer:null});
+ const stop=()=>{if(retry.current.timer){clearTimeout(retry.current.timer);retry.current.timer=null}retry.current.attempts=0;if(ws.current){try{ws.current.onclose=null;ws.current.onmessage=null;ws.current.onerror=null;ws.current.close()}catch{}ws.current=null}setStatus('offline')};
  const connect=(m:string=market)=>{stop();setTicks([]);setError('');setStatus('connecting');setFeedMode('live');
-  try{const socket=new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=1089');ws.current=socket;
+  const open=(hostIdx:number)=>{
+   const socket=new WebSocket(WS_HOSTS[hostIdx]);ws.current=socket;
    socket.onopen=()=>{setStatus('live');socket.send(JSON.stringify({active_symbols:'brief',product_type:'basic',req_id:req.current++}));};
    socket.onmessage=(ev)=>{try{const msg=JSON.parse(ev.data);if(msg.error){setError(msg.error.message||'Market-data error');setStatus('error');return;}
     if(msg.msg_type==='active_symbols'&&Array.isArray(msg.active_symbols)){const found=msg.active_symbols.find((x:any)=>(x.symbol??x.underlying_symbol)===m);const dec=Number(found?.pip_size??found?.pip??pip.current);if(Number.isFinite(dec))pip.current=dec;socket.send(JSON.stringify({ticks_history:m,count:1000,end:'latest',style:'ticks',req_id:req.current++}));socket.send(JSON.stringify({ticks:m,subscribe:1,req_id:req.current++}));}
