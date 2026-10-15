@@ -27,7 +27,7 @@ export function SixfoldApp(){
  const connect=(m:string=market)=>{stop();setTicks([]);setError('');setStatus('connecting');setFeedMode('live');
   const open=(hostIdx:number)=>{
    const socket=new WebSocket(WS_HOSTS[hostIdx]);ws.current=socket;
-   socket.onopen=()=>{setStatus('live');socket.send(JSON.stringify({active_symbols:'brief',product_type:'basic',req_id:req.current++}));};
+   socket.onopen=()=>{retry.current.host=hostIdx;retry.current.attempts=0;setStatus('live');socket.send(JSON.stringify({active_symbols:'brief',product_type:'basic',req_id:req.current++}));};
    socket.onmessage=(ev)=>{try{const msg=JSON.parse(ev.data);if(msg.error){setError(msg.error.message||'Market-data error');setStatus('error');return;}
     if(msg.msg_type==='active_symbols'&&Array.isArray(msg.active_symbols)){const found=msg.active_symbols.find((x:any)=>(x.symbol??x.underlying_symbol)===m);const dec=Number(found?.pip_size??found?.pip??pip.current);if(Number.isFinite(dec))pip.current=dec;socket.send(JSON.stringify({ticks_history:m,count:1000,end:'latest',style:'ticks',req_id:req.current++}));socket.send(JSON.stringify({ticks:m,subscribe:1,req_id:req.current++}));}
     if(msg.msg_type==='history'&&msg.history?.prices){const ps:number[]=msg.history.prices,ts:number[]=msg.history.times;const batch=ps.map((q,i)=>tickFromQuote(Number(q),Number(ts[i]??Date.now()/1000),pip.current));setTicks(batch.slice(-1000));}
